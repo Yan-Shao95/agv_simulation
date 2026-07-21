@@ -1,0 +1,7 @@
+command_arbiter:
+  ros__parameters:
+    command_timeout: 0.5
+module_angle_controller:
+  ros__parameters:
+    kp: 4.0
+    max_steering_velocity: 3.0

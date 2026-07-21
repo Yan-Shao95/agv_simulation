@@ -1,0 +1,9 @@
+uint8 STOP=0
+uint8 TWIST=1
+uint8 MODULE=2
+uint8 MOTOR=3
+std_msgs/Header header
+uint8 mode
+bool command_timed_out
+float64[4] module_angles
+float64[8] motor_velocities

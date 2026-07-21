@@ -1,0 +1,10 @@
+build/
+install/
+log/
+build_*/
+install_*/
+log_*/
+__pycache__/
+*.pyc
+.pytest_cache/
+.colcon/

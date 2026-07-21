@@ -1,0 +1,18 @@
+<?xml version="1.0"?><sdf version="1.9"><world name="warehouse_40x50">
+<physics name="default" type="ignored"><max_step_size>0.001</max_step_size><real_time_factor>1</real_time_factor></physics>
+<plugin filename="gz-sim-physics-system" name="gz::sim::systems::Physics"/><plugin filename="gz-sim-sensors-system" name="gz::sim::systems::Sensors"><render_engine>ogre2</render_engine></plugin><plugin filename="gz-sim-user-commands-system" name="gz::sim::systems::UserCommands"/><plugin filename="gz-sim-scene-broadcaster-system" name="gz::sim::systems::SceneBroadcaster"/>
+<light name="sun" type="directional"><pose>0 0 10 0 0 0</pose><diffuse>0.9 0.9 0.9 1</diffuse><direction>-0.3 0.2 -1</direction></light>
+<model name="floor"><static>true</static><link name="link"><collision name="collision"><geometry><box><size>40 50 0.1</size></box></geometry></collision><visual name="visual"><geometry><box><size>40 50 0.1</size></box></geometry><material><diffuse>0.55 0.55 0.55 1</diffuse></material></visual></link></model>
+<model name="walls"><static>true</static><link name="link">
+<collision name="north"><pose>0 25 1.5 0 0 0</pose><geometry><box><size>40 0.2 3</size></box></geometry></collision><visual name="north_v"><pose>0 25 1.5 0 0 0</pose><geometry><box><size>40 0.2 3</size></box></geometry></visual>
+<collision name="south"><pose>0 -25 1.5 0 0 0</pose><geometry><box><size>40 0.2 3</size></box></geometry></collision><visual name="south_v"><pose>0 -25 1.5 0 0 0</pose><geometry><box><size>40 0.2 3</size></box></geometry></visual>
+<collision name="east"><pose>20 0 1.5 0 0 0</pose><geometry><box><size>0.2 50 3</size></box></geometry></collision><visual name="east_v"><pose>20 0 1.5 0 0 0</pose><geometry><box><size>0.2 50 3</size></box></geometry></visual>
+<collision name="west"><pose>-20 0 1.5 0 0 0</pose><geometry><box><size>0.2 50 3</size></box></geometry></collision><visual name="west_v"><pose>-20 0 1.5 0 0 0</pose><geometry><box><size>0.2 50 3</size></box></geometry></visual>
+</link></model>
+<model name="rack_rows"><static>true</static><link name="link">
+<collision name="r1"><pose>-12 3 1.5 0 0 0</pose><geometry><box><size>2 30 3</size></box></geometry></collision><visual name="r1v"><pose>-12 3 1.5 0 0 0</pose><geometry><box><size>2 30 3</size></box></geometry><material><diffuse>0.8 0.45 0.1 1</diffuse></material></visual>
+<collision name="r2"><pose>-6 3 1.5 0 0 0</pose><geometry><box><size>2 30 3</size></box></geometry></collision><visual name="r2v"><pose>-6 3 1.5 0 0 0</pose><geometry><box><size>2 30 3</size></box></geometry></visual>
+<collision name="r3"><pose>0 3 1.5 0 0 0</pose><geometry><box><size>2 30 3</size></box></geometry></collision><visual name="r3v"><pose>0 3 1.5 0 0 0</pose><geometry><box><size>2 30 3</size></box></geometry></visual>
+<collision name="r4"><pose>6 3 1.5 0 0 0</pose><geometry><box><size>2 30 3</size></box></geometry></collision><visual name="r4v"><pose>6 3 1.5 0 0 0</pose><geometry><box><size>2 30 3</size></box></geometry></visual>
+<collision name="r5"><pose>12 3 1.5 0 0 0</pose><geometry><box><size>2 30 3</size></box></geometry></collision><visual name="r5v"><pose>12 3 1.5 0 0 0</pose><geometry><box><size>2 30 3</size></box></geometry></visual>
+</link></model></world></sdf>

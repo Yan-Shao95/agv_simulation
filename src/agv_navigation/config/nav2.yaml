@@ -1,0 +1,29 @@
+amcl:
+  ros__parameters: {use_sim_time: true, base_frame_id: base_link, odom_frame_id: odom, global_frame_id: map, scan_topic: /scan}
+controller_server:
+  ros__parameters:
+    use_sim_time: true
+    controller_frequency: 15.0
+    controller_plugins: [FollowPath]
+    FollowPath:
+      plugin: dwb_core::DWBLocalPlanner
+      min_vel_x: -0.8
+      max_vel_x: 0.8
+      min_vel_y: -0.8
+      max_vel_y: 0.8
+      max_vel_theta: 1.0
+      acc_lim_x: 0.5
+      acc_lim_y: 0.5
+      acc_lim_theta: 0.8
+      critics: [RotateToGoal, Oscillation, BaseObstacle, GoalAlign, PathAlign, PathDist, GoalDist]
+local_costmap:
+  local_costmap:
+    ros__parameters: {use_sim_time: true, global_frame: odom, robot_base_frame: base_link, rolling_window: true, width: 8, height: 8, resolution: 0.05, footprint: '[[0.65,0.45],[0.65,-0.45],[-0.65,-0.45],[-0.65,0.45]]', plugins: [obstacle_layer, inflation_layer]}
+global_costmap:
+  global_costmap:
+    ros__parameters: {use_sim_time: true, global_frame: map, robot_base_frame: base_link, resolution: 0.05, track_unknown_space: true, plugins: [static_layer, obstacle_layer, inflation_layer]}
+planner_server:
+  ros__parameters: {use_sim_time: true, planner_plugins: [GridBased], GridBased: {plugin: nav2_navfn_planner/NavfnPlanner}}
+behavior_server: {ros__parameters: {use_sim_time: true}}
+bt_navigator: {ros__parameters: {use_sim_time: true, global_frame: map, robot_base_frame: base_link, odom_topic: /odometry/wheel}}
+waypoint_follower: {ros__parameters: {use_sim_time: true}}

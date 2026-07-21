@@ -1,0 +1,1 @@
+<?xml version="1.0"?><package format="3"><name>agv_worlds</name><version>0.1.0</version><description>40x50 仓库世界</description><maintainer email="dev@example.com">AGV Sim</maintainer><license>Apache-2.0</license><buildtool_depend>ament_cmake</buildtool_depend><export><build_type>ament_cmake</build_type></export></package>

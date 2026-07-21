@@ -1,0 +1,32 @@
+<?xml version="1.0"?>
+<robot xmlns:xacro="http://www.ros.org/wiki/xacro" name="differential_swerve_agv">
+  <xacro:property name="wheel_radius" value="0.10"/><xacro:property name="wheel_width" value="0.05"/>
+  <link name="base_footprint"/>
+  <link name="base_link"><visual><geometry><box size="1.2 0.8 0.35"/></geometry><material name="blue"><color rgba="0.1 0.3 0.8 1"/></material></visual><collision><geometry><box size="1.2 0.8 0.35"/></geometry></collision><inertial><mass value="120"/><origin xyz="0 0 0"/><inertia ixx="8" ixy="0" ixz="0" iyy="15" iyz="0" izz="20"/></inertial></link>
+  <joint name="base_footprint_joint" type="fixed"><parent link="base_footprint"/><child link="base_link"/><origin xyz="0 0 0.275"/></joint>
+  <xacro:macro name="module" params="id x y">
+    <link name="module_${id}_carrier"><visual><geometry><cylinder radius="0.11" length="0.08"/></geometry></visual><collision><geometry><cylinder radius="0.11" length="0.08"/></geometry></collision><inertial><mass value="5"/><inertia ixx="0.03" ixy="0" ixz="0" iyy="0.03" iyz="0" izz="0.04"/></inertial></link>
+    <joint name="module_${id}_steering_joint" type="continuous"><parent link="base_link"/><child link="module_${id}_carrier"/><origin xyz="${x} ${y} -0.175"/><axis xyz="0 0 1"/><dynamics damping="0.2" friction="0.05"/></joint>
+    <xacro:wheel id="${id}" side="left" offset="0.05" axis="1"/><xacro:wheel id="${id}" side="right" offset="-0.05" axis="-1"/>
+  </xacro:macro>
+  <xacro:macro name="wheel" params="id side offset axis">
+    <link name="module_${id}_${side}_wheel"><visual><origin rpy="1.5708 0 0"/><geometry><cylinder radius="${wheel_radius}" length="${wheel_width}"/></geometry></visual><collision><origin rpy="1.5708 0 0"/><geometry><cylinder radius="${wheel_radius}" length="${wheel_width}"/></geometry></collision><inertial><mass value="2"/><inertia ixx="0.01" ixy="0" ixz="0" iyy="0.005" iyz="0" izz="0.01"/></inertial></link>
+    <joint name="module_${id}_${side}_wheel_joint" type="continuous"><parent link="module_${id}_carrier"/><child link="module_${id}_${side}_wheel"/><origin xyz="0 ${offset} -0.10"/><axis xyz="0 ${axis} 0"/><dynamics damping="0.05"/></joint>
+    <gazebo reference="module_${id}_${side}_wheel"><mu1>1.5</mu1><mu2>1.5</mu2></gazebo>
+  </xacro:macro>
+  <xacro:module id="1" x="0.45" y="0.325"/><xacro:module id="2" x="0.45" y="-0.325"/><xacro:module id="3" x="-0.45" y="-0.325"/><xacro:module id="4" x="-0.45" y="0.325"/>
+  <link name="laser_frame"><visual><geometry><cylinder radius="0.06" length="0.05"/></geometry></visual><inertial><mass value="0.5"/><inertia ixx="0.001" ixy="0" ixz="0" iyy="0.001" iyz="0" izz="0.001"/></inertial></link>
+  <joint name="laser_joint" type="fixed"><parent link="base_link"/><child link="laser_frame"/><origin xyz="0 0 0.375"/></joint>
+  <link name="imu_link"/><joint name="imu_joint" type="fixed"><parent link="base_link"/><child link="imu_link"/></joint>
+  <link name="gps_link"/><joint name="gps_joint" type="fixed"><parent link="base_link"/><child link="gps_link"/><origin xyz="0 0 0.4"/></joint>
+  <gazebo reference="laser_frame"><sensor name="lidar" type="gpu_lidar"><topic>scan</topic><update_rate>10</update_rate><lidar><scan><horizontal><samples>720</samples><resolution>1</resolution><min_angle>-3.14159265</min_angle><max_angle>3.14159265</max_angle></horizontal></scan><range><min>0.10</min><max>20.0</max><resolution>0.01</resolution></range><noise><type>gaussian</type><mean>0</mean><stddev>0.01</stddev></noise></lidar><always_on>true</always_on><visualize>true</visualize></sensor></gazebo>
+  <ros2_control name="GazeboSystem" type="system"><hardware><plugin>gz_ros2_control/GazeboSimSystem</plugin></hardware>
+    <joint name="module_1_steering_joint"><state_interface name="position"/><state_interface name="velocity"/></joint>
+    <joint name="module_2_steering_joint"><state_interface name="position"/><state_interface name="velocity"/></joint>
+    <joint name="module_3_steering_joint"><state_interface name="position"/><state_interface name="velocity"/></joint>
+    <joint name="module_4_steering_joint"><state_interface name="position"/><state_interface name="velocity"/></joint>
+    <xacro:macro name="control_wheel" params="id side"><joint name="module_${id}_${side}_wheel_joint"><command_interface name="velocity"><param name="min">-40</param><param name="max">40</param></command_interface><state_interface name="position"/><state_interface name="velocity"/></joint></xacro:macro>
+    <xacro:control_wheel id="1" side="left"/><xacro:control_wheel id="1" side="right"/><xacro:control_wheel id="2" side="left"/><xacro:control_wheel id="2" side="right"/><xacro:control_wheel id="3" side="left"/><xacro:control_wheel id="3" side="right"/><xacro:control_wheel id="4" side="left"/><xacro:control_wheel id="4" side="right"/>
+  </ros2_control>
+  <gazebo><plugin filename="gz_ros2_control-system" name="gz_ros2_control::GazeboSimROS2ControlPlugin"><parameters>$(find agv_description)/config/ros2_controllers.yaml</parameters></plugin></gazebo>
+</robot>
