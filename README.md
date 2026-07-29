@@ -1,6 +1,6 @@
 # 四差动驱动总成 AGV 仿真
 
-这是一个面向仓储场景的 ROS 2 全向 AGV 仿真项目，运行环境为 Ubuntu 24.04、ROS 2 Jazzy 和 Gazebo Harmonic。
+这是一个面向仓储场景的 ROS 2 多车型仿真项目，运行环境为 Ubuntu 24.04、ROS 2 Jazzy 和 Gazebo Harmonic。测试环境可选择四差动总成 AGV、四驱麦克纳姆轮小车或标准阿克曼小车。
 
 车辆由 4 个差动驱动总成构成，每个总成包含一个被动转向关节和两个反向安装的驱动轮，共计 4 个转向关节、8 个驱动轮。左右轮的差速用于调整总成方向，两轮的平均速度用于驱动车辆，因此整车能够完成：
 
@@ -48,13 +48,8 @@
 command_arbiter
    │  /drive/twist_command
    ▼
-swerve_kinematics
-   │  /drive/module_target
-   ▼
-module_angle_controller ◀── /joint_states
-   │  /drive/module_velocity_target
-   ▼
-differential_module_mixer
+direct_motor_controller ◀── /joint_states
+   │  动作准备 + 8 路独立轮速
    │  /drive/motor_velocity_target
    ▼
 motor_command_bridge
@@ -66,14 +61,14 @@ ros2_control / Gazebo
    └── /odometry/wheel
 ```
 
-控制链分层设计，既可以使用标准 `geometry_msgs/msg/Twist` 控制整车，也可以绕过上层运动学，直接调试总成或 8 个电机。
+mode 1 参考 `move` 目录的控制思路：动作切换时先用左右轮差动将四个轮组转到目标方向，全部进入 2° 容差后，才输出行驶速度。节点每 20 ms 计算并发布一次包含 8 个元素的电机命令，从而避免轮组未对正时边转向边行驶。仍可使用 mode 2/3 绕过上层控制，直接调试总成或 8 个电机。
 
 ## 软件包说明
 
 | 软件包 | 作用 |
 |---|---|
 | `agv_interfaces` | 自定义总成命令、电机命令、状态消息和控制模式服务 |
-| `agv_drive_controller` | 指令仲裁、四总成运动学、舵向闭环、差动混控和轮式里程计 |
+| `agv_drive_controller` | 指令仲裁、动作准备、8 电机独立控制、运动学和轮式里程计 |
 | `agv_description` | AGV Xacro/URDF、雷达和 ros2_control 配置 |
 | `agv_gazebo` | Gazebo 启动、车辆生成、控制器加载和 ros_gz_bridge |
 | `agv_worlds` | 40 m × 50 m 仓库世界 |
@@ -166,7 +161,7 @@ source install/setup.bash
 
 ```text
 8 packages finished
-5 tests, 0 errors, 0 failures, 0 skipped
+9 tests, 0 errors, 0 failures, 0 skipped
 ```
 
 ## 启动仿真
@@ -198,6 +193,34 @@ ros2 control list_controllers
 
 结束仿真时在终端 1 按 `Ctrl+C`。
 
+### 选择车型
+
+通过 `vehicle_type` 参数选择测试车辆：
+
+```bash
+# 四差动总成 AGV（默认）
+ros2 launch agv_bringup sim.launch.py vehicle_type:=differential_swerve
+
+# 四驱麦克纳姆轮小车
+ros2 launch agv_bringup sim.launch.py vehicle_type:=mecanum
+
+# 标准阿克曼小车
+ros2 launch agv_bringup sim.launch.py vehicle_type:=ackermann
+```
+
+同一参数也适用于建图和导航入口：
+
+```bash
+ros2 launch agv_bringup mapping.launch.py vehicle_type:=mecanum
+ros2 launch agv_bringup navigation.launch.py vehicle_type:=ackermann
+```
+
+三种车型统一订阅 `/cmd_vel`，并提供 `/scan` 和 `/odometry/wheel`。其中：
+
+- `differential_swerve` 启动项目自带的 mode 1 控制链，使用前需调用 `/drive/set_control_mode`。
+- `mecanum` 使用 Gazebo Harmonic 麦克纳姆驱动系统，支持 `linear.x`、`linear.y` 和 `angular.z`。
+- `ackermann` 使用 Gazebo Harmonic 阿克曼转向系统，只使用 `linear.x` 和 `angular.z`；它不支持横移，`linear.y` 会被忽略。
+
 ## 控制车辆
 
 打开终端 2，并加载环境：
@@ -220,6 +243,44 @@ ros2 service call /drive/set_control_mode \
 返回 `success=True` 表示切换成功。
 
 ### 2. 发送运动命令
+
+mode 1 接收标准 `Twist`。直行、横移或自转命令开始后，轮组可能先原地调整方向；准备完成后车辆才运动。命令必须以高于 2 Hz 的频率持续发布，超过 0.5 秒未收到新命令时会自动输出 8 路零速度。
+
+#### 键盘控制
+
+项目内置 `keyboard_teleop` 节点，它会向 `/cmd_vel` 持续发布速度命令。请在已加载工作区环境的交互式终端中运行：
+
+```bash
+ros2 run agv_drive_controller keyboard_teleop
+```
+
+键位如下：
+
+```text
+Q：左前    W：前进      E：右前
+A：左移    S：减速停车  D：右移
+Z：左后    X：后退      C：右后
+
+F：左转    G：右转
+空格：急速停车
+Ctrl+C：停车并退出
+```
+
+- 按住或连续按运动键控制车辆；松开运动键约 `0.25 s` 后自动停车。
+- `S` 将当前速度逐级降低，空格立即发布零速度指令。
+- `+`/`-` 调整线速度，`]`/`[` 调整角速度。默认线速度为 `0.3 m/s`，默认角速度为 `0.6 rad/s`。
+- `differential_swerve` 车型使用前必须先切换到 TWIST 模式；`mecanum` 可使用全部移动键；`ackermann` 会忽略横向速度。
+
+可以通过 ROS 参数修改初始速度及按键超时时间：
+
+```bash
+ros2 run agv_drive_controller keyboard_teleop --ros-args \
+  -p linear_speed:=0.5 \
+  -p angular_speed:=0.8 \
+  -p key_timeout:=0.25
+```
+
+#### 命令行发布
 
 前进：
 
