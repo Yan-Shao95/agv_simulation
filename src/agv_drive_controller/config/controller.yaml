@@ -5,3 +5,12 @@ module_angle_controller:
   ros__parameters:
     kp: 4.0
     max_steering_velocity: 3.0
+direct_motor_controller:
+  ros__parameters:
+    command_timeout: 0.5
+    wheel_radius: 0.1
+    module_half_track: 0.05
+    kp: 4.0
+    max_steering_velocity: 3.0
+    steering_tolerance_deg: 2.0
+    max_motor_velocity: 30.0
