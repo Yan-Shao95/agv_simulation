@@ -14,8 +14,8 @@ except ImportError:  # pragma: no cover - 仅用于非 ROS 开发机静态检查
     rclpy = None
     Node = object
 
-from .kinematics import ChassisTwist, SwerveKinematics
-from .angle_control import angle_velocity, optimize_target
+from .kinematics import ChassisTwist, ModuleTarget, SwerveKinematics, stop_targets
+from .angle_control import alignment_ready, bounded_angle_velocity, coordinated_speeds
 from .module_mixer import mix_module
 
 POSITIONS = ((0.45, 0.325), (0.45, -0.325), (-0.45, -0.325), (-0.45, 0.325))
@@ -52,27 +52,64 @@ class CommandArbiter(Node):
 class KinematicsNode(Node):
     def __init__(self):
         super().__init__('swerve_kinematics')
-        self.kin=SwerveKinematics(POSITIONS); self.pub=self.create_publisher(ModuleCommandArray,'drive/module_target',10)
+        self.kin=SwerveKinematics(POSITIONS); self.last_targets=tuple(ModuleTarget(i, 0.0, 0.0) for i in range(1, 5)); self.pub=self.create_publisher(ModuleCommandArray,'drive/module_target',10)
         self.create_subscription(Twist,'drive/twist_command',self._callback,10)
     def _callback(self,msg):
         from agv_interfaces.msg import ModuleCommand
-        targets=self.kin.inverse(ChassisTwist(msg.linear.x,msg.linear.y,msg.angular.z))
+        twist=ChassisTwist(msg.linear.x,msg.linear.y,msg.angular.z)
+        if abs(twist.vx) < 1e-12 and abs(twist.vy) < 1e-12 and abs(twist.wz) < 1e-12:
+            targets=stop_targets(self.last_targets)
+        else:
+            targets=self.kin.inverse(twist)
+            self.last_targets=targets
         self.pub.publish(ModuleCommandArray(modules=[ModuleCommand(module_id=t.module_id,steering_angle=t.steering_angle,drive_velocity=t.drive_velocity) for t in targets]))
 
 class ModuleAngleController(Node):
     def __init__(self):
         super().__init__('module_angle_controller'); self.angles=[0.0]*4; self.targets=None
-        self.kp=self.declare_parameter('kp',4.0).value; self.maximum=self.declare_parameter('max_steering_velocity',3.0).value
+        self.kp=float(self.declare_parameter('kp',2.0).value)
+        self.maximum=float(self.declare_parameter('max_steering_velocity',1.0).value)
+        self.enter_tolerance=math.radians(float(self.declare_parameter('enter_tolerance_deg',3.0).value))
+        self.leave_tolerance=math.radians(float(self.declare_parameter('leave_tolerance_deg',5.0).value))
+        self.abort_tolerance=math.radians(float(self.declare_parameter('abort_tolerance_deg',10.0).value))
+        self.acceleration=float(self.declare_parameter('max_drive_acceleration',0.15).value)
+        self.deceleration=float(self.declare_parameter('max_drive_deceleration',0.50).value)
+        self.speeds=[0.0]*4
+        self.aligned=False
+        self.last_update=time.monotonic()
         self.pub=self.create_publisher(ModuleCommandArray,'drive/module_velocity_target',10)
         self.create_subscription(JointState,'joint_states',self._joints,10); self.create_subscription(ModuleCommandArray,'drive/module_target',self._targets,10)
+        self.create_subscription(MotorCommandArray,'drive/motor_command_selected',self._motor_override,10)
     def _joints(self,msg):
         by_name=dict(zip(msg.name,msg.position)); self.angles=[by_name.get(f'module_{i}_steering_joint',self.angles[i-1]) for i in range(1,5)]
+    def _motor_override(self,msg):
+        if all(abs(speed)<1e-9 for speed in msg.velocity):
+            self.speeds=[0.0]*4
+            self.aligned=False
     def _targets(self,msg):
         from agv_interfaces.msg import ModuleCommand
+        now=time.monotonic()
+        dt=max(0.0,min(now-self.last_update,0.2))
+        self.last_update=now
+        optimized=[
+            (target.steering_angle,target.drive_velocity)
+            for target in msg.modules
+        ]
+        errors=[angle-self.angles[i] for i,(angle,_) in enumerate(optimized)]
+        self.aligned=alignment_ready(
+            errors,self.aligned,self.enter_tolerance,
+            self.leave_tolerance,self.abort_tolerance)
+        if any(abs(error)>=self.abort_tolerance for error in errors):
+            self.aligned=False
+        self.speeds=coordinated_speeds(
+            [speed for _,speed in optimized],self.speeds,self.aligned,
+            self.acceleration*dt,self.deceleration*dt)
         out=[]
-        for i,t in enumerate(msg.modules):
-            angle,speed=optimize_target(t.steering_angle,t.drive_velocity,self.angles[i])
-            out.append(ModuleCommand(module_id=i+1,steering_angle=angle_velocity(angle,self.angles[i],self.kp,self.maximum),drive_velocity=speed))
+        for i,((angle,requested_speed),error) in enumerate(zip(optimized,errors)):
+            out.append(ModuleCommand(
+                module_id=i+1,
+                steering_angle=bounded_angle_velocity(angle,self.angles[i],self.kp,self.maximum),
+                drive_velocity=self.speeds[i]))
         self.pub.publish(ModuleCommandArray(modules=out))
 
 class DifferentialModuleMixer(Node):
