@@ -1,0 +1,51 @@
+<?xml version="1.0"?>
+<robot xmlns:xacro="http://www.ros.org/wiki/xacro" name="ackermann_agv">
+  <xacro:property name="wheel_radius" value="0.12"/>
+  <xacro:property name="wheel_width" value="0.07"/>
+  <link name="base_footprint"/>
+  <link name="base_link">
+    <visual><geometry><box size="1.15 0.62 0.24"/></geometry><material name="orange"><color rgba="0.9 0.35 0.05 1"/></material></visual>
+    <collision><geometry><box size="1.15 0.62 0.24"/></geometry></collision>
+    <inertial><mass value="55"/><inertia ixx="2.4" ixy="0" ixz="0" iyy="5.8" iyz="0" izz="7.2"/></inertial>
+  </link>
+  <joint name="base_footprint_joint" type="fixed"><parent link="base_footprint"/><child link="base_link"/><origin xyz="0 0 0.24"/></joint>
+
+  <xacro:macro name="wheel_link" params="name">
+    <link name="${name}_wheel">
+      <visual><origin rpy="1.5708 0 0"/><geometry><cylinder radius="${wheel_radius}" length="${wheel_width}"/></geometry><material name="dark"><color rgba="0.1 0.1 0.1 1"/></material></visual>
+      <collision><origin rpy="1.5708 0 0"/><geometry><cylinder radius="${wheel_radius}" length="${wheel_width}"/></geometry></collision>
+      <inertial><mass value="1.5"/><inertia ixx="0.012" ixy="0" ixz="0" iyy="0.006" iyz="0" izz="0.012"/></inertial>
+    </link>
+    <gazebo reference="${name}_wheel"><mu1>1.3</mu1><mu2>0.6</mu2></gazebo>
+  </xacro:macro>
+  <xacro:macro name="front_wheel" params="side y">
+    <link name="front_${side}_steering_link"><inertial><mass value="0.5"/><inertia ixx="0.003" ixy="0" ixz="0" iyy="0.003" iyz="0" izz="0.003"/></inertial></link>
+    <joint name="front_${side}_steering_joint" type="revolute"><parent link="base_link"/><child link="front_${side}_steering_link"/><origin xyz="0.43 ${y} -0.12"/><axis xyz="0 0 1"/><limit lower="-0.55" upper="0.55" effort="80" velocity="2"/></joint>
+    <xacro:wheel_link name="front_${side}"/>
+    <joint name="front_${side}_wheel_joint" type="continuous"><parent link="front_${side}_steering_link"/><child link="front_${side}_wheel"/><axis xyz="0 1 0"/><dynamics damping="0.03"/></joint>
+  </xacro:macro>
+  <xacro:macro name="rear_wheel" params="side y">
+    <xacro:wheel_link name="rear_${side}"/>
+    <joint name="rear_${side}_wheel_joint" type="continuous"><parent link="base_link"/><child link="rear_${side}_wheel"/><origin xyz="-0.43 ${y} -0.12"/><axis xyz="0 1 0"/><dynamics damping="0.03"/></joint>
+  </xacro:macro>
+  <xacro:front_wheel side="left" y="0.34"/><xacro:front_wheel side="right" y="-0.34"/>
+  <xacro:rear_wheel side="left" y="0.34"/><xacro:rear_wheel side="right" y="-0.34"/>
+
+  <link name="laser_frame"><visual><geometry><cylinder radius="0.06" length="0.05"/></geometry></visual><inertial><mass value="0.5"/><inertia ixx="0.001" ixy="0" ixz="0" iyy="0.001" iyz="0" izz="0.001"/></inertial></link>
+  <joint name="laser_joint" type="fixed"><parent link="base_link"/><child link="laser_frame"/><origin xyz="0.25 0 0.19"/></joint>
+  <link name="imu_link"/><joint name="imu_joint" type="fixed"><parent link="base_link"/><child link="imu_link"/></joint>
+  <link name="gps_link"/><joint name="gps_joint" type="fixed"><parent link="base_link"/><child link="gps_link"/><origin xyz="0 0 0.22"/></joint>
+  <gazebo reference="laser_frame"><sensor name="lidar" type="gpu_lidar"><topic>scan</topic><update_rate>10</update_rate><lidar><scan><horizontal><samples>720</samples><resolution>1</resolution><min_angle>-3.14159265</min_angle><max_angle>3.14159265</max_angle></horizontal></scan><range><min>0.10</min><max>20.0</max><resolution>0.01</resolution></range></lidar><always_on>true</always_on><visualize>true</visualize></sensor></gazebo>
+  <gazebo>
+    <plugin filename="gz-sim-ackermann-steering-system" name="gz::sim::systems::AckermannSteering">
+      <left_joint>front_left_wheel_joint</left_joint><left_joint>rear_left_wheel_joint</left_joint>
+      <right_joint>front_right_wheel_joint</right_joint><right_joint>rear_right_wheel_joint</right_joint>
+      <left_steering_joint>front_left_steering_joint</left_steering_joint>
+      <right_steering_joint>front_right_steering_joint</right_steering_joint>
+      <kingpin_width>0.68</kingpin_width><steering_limit>0.52</steering_limit>
+      <wheel_base>0.86</wheel_base><wheel_separation>0.68</wheel_separation><wheel_radius>${wheel_radius}</wheel_radius>
+      <min_velocity>-1.5</min_velocity><max_velocity>1.5</max_velocity>
+      <min_acceleration>-2.0</min_acceleration><max_acceleration>2.0</max_acceleration>
+    </plugin>
+  </gazebo>
+</robot>

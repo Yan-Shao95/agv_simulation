@@ -3,10 +3,11 @@ command_arbiter:
     command_timeout: 0.5
 module_angle_controller:
   ros__parameters:
-    kp: 2.0
-    max_steering_velocity: 1.0
-    enter_tolerance_deg: 3.0
-    leave_tolerance_deg: 5.0
-    abort_tolerance_deg: 10.0
+    kp: 4.0
+    low_steering_velocity: 0.6
+    high_steering_velocity: 3.0
+    slowdown_error_deg: 4.0
+    stop_error_deg: 12.0
     max_drive_acceleration: 0.15
     max_drive_deceleration: 0.50
+    control_rate_hz: 100.0

@@ -33,6 +33,41 @@ def rate_limit(target, current, maximum_delta):
     return current + delta
 
 
+def drive_scale(max_error, slowdown_error, stop_error):
+    values = (max_error, slowdown_error, stop_error)
+    if not all(math.isfinite(value) for value in values):
+        raise ValueError('驱动降速参数必须为有限数')
+    if max_error < 0 or slowdown_error < 0 or stop_error <= slowdown_error:
+        raise ValueError('驱动降速阈值无效')
+    if max_error <= slowdown_error:
+        return 1.0
+    if max_error >= stop_error:
+        return 0.0
+    return (stop_error - max_error) / (stop_error - slowdown_error)
+
+
+def adaptive_steering_limit(error, low_limit, high_limit,
+                            slowdown_error, stop_error):
+    values = (error, low_limit, high_limit, slowdown_error, stop_error)
+    if not all(math.isfinite(value) for value in values):
+        raise ValueError('舵角控制参数必须为有限数')
+    if error < 0 or low_limit < 0 or high_limit < low_limit:
+        raise ValueError('舵角速度限制无效')
+    fraction = 1.0 - drive_scale(error, slowdown_error, stop_error)
+    return low_limit + fraction * (high_limit - low_limit)
+
+
+def validate_lock_parameters(kp, low_limit, high_limit,
+                             slowdown_error, stop_error):
+    values = (kp, low_limit, high_limit, slowdown_error, stop_error)
+    if not all(math.isfinite(value) for value in values):
+        raise ValueError('锁角参数必须为有限数')
+    if kp < 0 or low_limit < 0 or high_limit < low_limit:
+        raise ValueError('锁角增益或速度限制无效')
+    if slowdown_error < 0 or stop_error <= slowdown_error:
+        raise ValueError('锁角降速阈值无效')
+
+
 def safe_drive_velocity(target, current, angle_error, ready_tolerance,
                         abort_tolerance, acceleration_delta, deceleration_delta):
     values = (target, current, angle_error, ready_tolerance, abort_tolerance,
@@ -51,17 +86,24 @@ def safe_drive_velocity(target, current, angle_error, ready_tolerance,
     return rate_limit(desired, current, maximum_delta)
 
 
-def coordinated_speeds(targets, currents, aligned, acceleration_delta, deceleration_delta):
+def coordinated_speeds(targets, currents, scale, acceleration_delta, deceleration_delta):
     targets = tuple(targets)
     currents = tuple(currents)
     if len(targets) != 4 or len(currents) != 4:
         raise ValueError('必须提供四组驱动速度')
-    if not aligned:
+    values = targets + currents + (scale, acceleration_delta, deceleration_delta)
+    if not all(math.isfinite(value) for value in values):
+        raise ValueError('协调驱动参数必须为有限数')
+    if not 0.0 <= scale <= 1.0:
+        raise ValueError('协调驱动比例必须在0到1之间')
+    if acceleration_delta < 0 or deceleration_delta < 0:
+        raise ValueError('协调驱动限速必须非负')
+    if scale == 0.0:
         return [0.0] * 4
     return [
         rate_limit(
-            target, current,
-            acceleration_delta if abs(target) > abs(current) else deceleration_delta)
+            target * scale, current,
+            acceleration_delta if abs(target * scale) > abs(current) else deceleration_delta)
         for target, current in zip(targets, currents)
     ]
 

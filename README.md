@@ -1,45 +1,47 @@
-# 四差动驱动总成 AGV 仿真
+# 多车型 AGV 仿真
 
-这是一个面向仓储场景的 ROS 2 全向 AGV 仿真项目，运行环境为 Ubuntu 24.04、ROS 2 Jazzy 和 Gazebo Harmonic。
+这是一个面向仓储场景的 ROS 2 AGV 仿真项目，运行环境为 Ubuntu 24.04、ROS 2 Jazzy 和 Gazebo Harmonic。项目通过统一的 `vehicle_type` 参数支持三种底盘：
 
-车辆由 4 个差动驱动总成构成，每个总成包含一个被动转向关节和两个反向安装的驱动轮，共计 4 个转向关节、8 个驱动轮。左右轮的差速用于调整总成方向，两轮的平均速度用于驱动车辆，因此整车能够完成：
+| `vehicle_type` | 车型 | 主要运动能力 |
+|---|---|---|
+| `differential_swerve` | 四差动驱动总成 AGV（默认） | 前后、横移、斜行、自转及组合运动 |
+| `mecanum` | 四驱麦克纳姆轮小车 | 前后、左右横移、自转及组合运动 |
+| `ackermann` | 标准阿克曼小车 | 前后行驶和随车速转向 |
 
-- 前进与后退
-- 左右横移
-- 任意方向斜行
-- 原地旋转
-- 平移与旋转组合运动
+默认差动舵轮车型由 4 个差动驱动总成构成，每个总成包含一个转向关节和两个反向安装的驱动轮，共计 4 个转向关节、8 个驱动轮。标准物理模型按约 1200 kg 整车质量配置，并包含周期舵角闭环和停车角度保持优化。
 
-项目同时提供二维激光雷达、轮式里程计、仓库世界、SLAM Toolbox、AMCL、Nav2，以及可选的 EKF、IMU、GPS 和外部里程计接入配置。
+项目同时提供二维激光雷达、轮式里程计、40 m × 50 m 仓库世界、SLAM Toolbox、AMCL、Nav2，以及 EKF、IMU、GPS 和外部里程计接入配置。
 
 ## 当前状态
 
 以下内容已经在 Ubuntu 24.04 原生环境中实际验证：
 
 - ROS 2 Jazzy 全工作空间构建，8 个软件包全部成功。
-- Xacro 展开和 URDF 结构检查。
-- Gazebo Harmonic 仓库世界和 AGV 实体生成。
-- 4 个转向关节与 8 个轮关节的 Gazebo/ros2_control 硬件接口。
-- 关节状态广播器和 8 轮速度控制器自动加载。
-- ROS 与 Gazebo 的 `/clock`、`/scan` 桥接。
+- 三种车型的 Xacro 展开、URDF 结构检查和 Gazebo 实体生成。
+- `vehicle_type` 在仿真、建图和导航启动入口中的透传。
+- 默认差动舵轮车型约 1200 kg 物理模型、4 个转向关节、8 个轮关节及完整 ros2_control 控制链。
+- 麦克纳姆轮前后、左右横移和正反自转；四轮摩擦方向固定于车体坐标，不随轮子旋转。
+- 麦克纳姆仿真 GPS 已通过 `/sensors/gps/fix` 发布有效 `NavSatFix` 数据。
+- 阿克曼前后行驶、组合转向，以及纵向速度保持、转向松开自动回正的专用键盘控制。
+- ROS 与 Gazebo 的 `/clock`、`/scan`、`/cmd_vel`、`/odometry/wheel` 桥接。
 - 720 点、360°、0.10～20 m 的二维激光雷达。
-- `/joint_states` 和 `/odometry/wheel` 反馈。
-- 前进、后退、横移、斜行和原地旋转。
+- 默认车型的 `/joint_states` 和 `/odometry/wheel` 反馈。
+- 三车型受控速度指令和世界真实位姿动态验收。
 - 指令超时自动停车和 ROS 节点正常退出。
-- 5 项控制与运动学自动测试。
+- 控制、运动学、车型选择、麦克纳姆接触配置和阿克曼键盘自动测试。
 
 以下功能已经提供配置，但尚未完成完整端到端验收：
 
 - SLAM Toolbox 实际建图和地图质量验收。
 - AMCL 长时间定位稳定性。
 - Nav2 多目标点自主导航。
-- GPS、IMU 和外部里程计的实测融合。
+- GPS、IMU 和外部里程计的完整融合定位验收。
 
 仓库自带的 `warehouse.pgm` 是低分辨率示意地图。正式导航应通过 SLAM 生成约 0.05 m/像素的地图。
 
 ## 系统架构
 
-速度控制链路如下：
+三种车型共用 `/cmd_vel`、Gazebo 世界和传感器桥接。麦克纳姆和阿克曼由各自的 Gazebo 驱动插件直接消费 `/cmd_vel`；以下分层控制链仅用于默认差动舵轮车型：
 
 ```text
 /cmd_vel
@@ -73,8 +75,8 @@ ros2_control / Gazebo
 | 软件包 | 作用 |
 |---|---|
 | `agv_interfaces` | 自定义总成命令、电机命令、状态消息和控制模式服务 |
-| `agv_drive_controller` | 指令仲裁、四总成运动学、舵向闭环、差动混控和轮式里程计 |
-| `agv_description` | AGV Xacro/URDF、雷达和 ros2_control 配置 |
+| `agv_drive_controller` | 默认车型控制链、阿克曼状态保持键盘和轮式里程计 |
+| `agv_description` | 三车型 Xacro/URDF、雷达和 ros2_control 配置 |
 | `agv_gazebo` | Gazebo 启动、车辆生成、控制器加载和 ros_gz_bridge |
 | `agv_worlds` | 40 m × 50 m 仓库世界 |
 | `agv_localization` | robot_localization、EKF 和 GPS 扩展配置 |
@@ -162,22 +164,36 @@ source install/setup.bash
 ./scripts/test.sh
 ```
 
-当前预期结果：
-
-```text
-8 packages finished
-5 tests, 0 errors, 0 failures, 0 skipped
-```
+测试脚本会检查控制与运动学逻辑、三车型选择、Xacro、麦克纳姆接触方向和阿克曼状态保持键盘。测试数量会随功能增长，以脚本退出码和测试报告中的零失败为准。
 
 ## 启动仿真
 
-终端 1：
+终端 1 先加载环境：
 
 ```bash
 cd /path/to/agv_simulation
 source /opt/ros/jazzy/setup.bash
 source install/setup.bash
-ros2 launch agv_bringup sim.launch.py
+```
+
+然后选择车型启动。未指定 `vehicle_type` 时默认加载 `differential_swerve`。
+
+四差动总成 AGV（默认）：
+
+```bash
+ros2 launch agv_bringup sim.launch.py vehicle_type:=differential_swerve
+```
+
+四驱麦克纳姆轮小车：
+
+```bash
+ros2 launch agv_bringup sim.launch.py vehicle_type:=mecanum
+```
+
+标准阿克曼小车：
+
+```bash
+ros2 launch agv_bringup sim.launch.py vehicle_type:=ackermann
 ```
 
 启动过程会自动完成：
@@ -185,18 +201,18 @@ ros2 launch agv_bringup sim.launch.py
 1. 加载 40 m × 50 m 仓库世界。
 2. 展开 AGV Xacro 并启动 `robot_state_publisher`。
 3. 在 Gazebo 中生成车辆。
-4. 建立 `/clock` 和 `/scan` 桥接。
-5. 启动完整驱动控制链。
-6. 加载 `joint_state_broadcaster`。
-7. 加载 `wheel_velocity_controller`。
+4. 建立 `/clock`、`/scan`、`/cmd_vel` 和 `/odometry/wheel` 桥接。
+5. 仅在 `differential_swerve` 下启动完整差动舵轮控制链。
+6. 仅在 `differential_swerve` 下加载 `joint_state_broadcaster` 和 `wheel_velocity_controller`。
+7. 在麦克纳姆模型中加载 GPS 传感器和固定于车体的轮地摩擦方向。
 
-看到两个控制器均为 `active` 后即可控制车辆：
+默认差动舵轮车型看到两个控制器均为 `active` 后即可控制：
 
 ```bash
 ros2 control list_controllers
 ```
 
-结束仿真时在终端 1 按 `Ctrl+C`。
+麦克纳姆和阿克曼使用 Gazebo 驱动插件，不会出现上述两个 ros2_control 控制器。结束仿真时在终端 1 按 `Ctrl+C`。
 
 ## 控制车辆
 
@@ -208,9 +224,9 @@ source /opt/ros/jazzy/setup.bash
 source install/setup.bash
 ```
 
-### 1. 切换到 TWIST 模式
+### 默认差动舵轮车型：切换到 TWIST 模式
 
-系统启动后默认处于 STOP 模式，不接受 `/cmd_vel`。先执行：
+只有 `differential_swerve` 使用 STOP/TWIST/MODULE/MOTOR 仲裁。该车型启动后默认处于 STOP 模式，需要先执行：
 
 ```bash
 ros2 service call /drive/set_control_mode \
@@ -219,7 +235,7 @@ ros2 service call /drive/set_control_mode \
 
 返回 `success=True` 表示切换成功。
 
-### 标准键盘控制
+### 默认差动舵轮与麦克纳姆：通用键盘控制
 
 在项目根目录运行：
 
@@ -227,7 +243,7 @@ ros2 service call /drive/set_control_mode \
 ./scripts/teleop.sh
 ```
 
-保持该终端获得键盘焦点。脚本以 10 Hz 持续发布最后一条命令，避免 0.5 秒看门狗在按键间隔中停车。标准键位如下：
+保持该终端获得键盘焦点。`differential_swerve` 启动键盘前必须完成上述 TWIST 模式切换；`mecanum` 由 Gazebo 插件直接接收 `/cmd_vel`，无需调用模式服务。键位如下：
 
 - `i` / `,`：前进 / 后退
 - 小写 `j` / `l`：逆时针 / 顺时针自转
@@ -235,9 +251,26 @@ ros2 service call /drive/set_control_mode \
 - `u` / `o` / `m` / `.`：带转向的前进或后退组合运动
 - `k`：立即停止驱动，并保持当前舵轮角度
 
-每次启动仿真后都要先切换到 TWIST 模式，再运行键盘脚本。
+麦克纳姆模型的轮轴方向和四轮各向异性摩擦方向已按 Gazebo MecanumDrive 约定配置。横移和自转应同时观察 Gazebo 世界真实姿态，不能只依赖插件积分得到的理想轮式里程计。
 
-### 2. 发送运动命令
+### 阿克曼状态保持式键盘控制
+
+`ackermann` 不使用通用键盘节点，因为通用节点按 `j/l` 时会把线速度清零，而阿克曼车辆不能原地转向。请使用独立的状态保持式键盘节点：
+
+```bash
+./scripts/ackermann_teleop.sh
+```
+
+- `i`：保持前进，后续转向操作不会清除前进速度。
+- `,`：保持后退。
+- `j` / `l`：每个按键事件将转向指令增加 / 减少 `0.1 rad/s`，最大为 `±1.0 rad/s`。
+- 停止输入 `j/l` 超过 `0.15` 秒后，转向自动恢复为零，纵向速度继续保持。
+- `k`：停车并回正。
+- `Ctrl-C`：发布零速度后退出。
+
+### 直接发送运动命令
+
+三种车型都接收 `/cmd_vel`。阿克曼只使用 `linear.x` 与 `angular.z`；`linear.y` 横移命令仅适用于全向车型。
 
 前进：
 
@@ -288,16 +321,18 @@ ros2 topic pub /cmd_vel geometry_msgs/msg/Twist \
   "{linear: {x: 0.0, y: 0.0}, angular: {z: -0.3}}" -r 10
 ```
 
-按 `Ctrl+C` 停止命令发布。控制器超过 0.5 秒未收到有效指令时会自动发送零轮速。
+按 `Ctrl+C` 停止命令发布。默认差动舵轮控制器超过 0.5 秒未收到有效指令时会自动发送零轮速。
 
-### 3. 停止并锁定控制
+### 默认差动舵轮车型：停止并锁定控制
 
 ```bash
 ros2 service call /drive/set_control_mode \
   agv_interfaces/srv/SetControlMode "{mode: 0}"
 ```
 
-## 控制模式
+## 默认差动舵轮控制模式
+
+以下模式只属于 `differential_swerve`，麦克纳姆和阿克曼不提供 `/drive/set_control_mode` 服务。
 
 | 模式 | 编号 | 输入 | 用途 |
 |---|---:|---|---|
@@ -310,30 +345,31 @@ ros2 service call /drive/set_control_mode \
 
 ## 主要 ROS 2 接口
 
-| 名称 | 类型 | 方向 | 说明 |
-|---|---|---|---|
-| `/cmd_vel` | `geometry_msgs/msg/Twist` | 输入 | TWIST 模式整车速度 |
-| `/drive/set_control_mode` | `agv_interfaces/srv/SetControlMode` | 服务 | 设置 STOP/TWIST/MODULE/MOTOR |
-| `/drive/module_command_direct` | `agv_interfaces/msg/ModuleCommandArray` | 输入 | MODULE 模式直接总成命令 |
-| `/drive/motor_command_direct` | `agv_interfaces/msg/MotorCommandArray` | 输入 | MOTOR 模式 8 轮速度命令 |
-| `/joint_states` | `sensor_msgs/msg/JointState` | 输出 | 4 个转向关节和 8 个轮关节状态 |
-| `/odometry/wheel` | `nav_msgs/msg/Odometry` | 输出 | 四总成正运动学轮式里程计 |
-| `/scan` | `sensor_msgs/msg/LaserScan` | 输出 | 360° 二维激光雷达 |
-| `/clock` | `rosgraph_msgs/msg/Clock` | 输出 | Gazebo 仿真时钟 |
-| `/wheel_velocity_controller/commands` | `std_msgs/msg/Float64MultiArray` | 内部 | 8 轮控制器目标速度 |
+| 名称 | 类型 | 方向 | 车型范围 | 说明 |
+|---|---|---|---|---|
+| `/cmd_vel` | `geometry_msgs/msg/Twist` | 输入 | 三车型 | 整车速度指令 |
+| `/odometry/wheel` | `nav_msgs/msg/Odometry` | 输出 | 三车型 | 轮式/驱动插件里程计 |
+| `/scan` | `sensor_msgs/msg/LaserScan` | 输出 | 三车型 | 360° 二维激光雷达 |
+| `/clock` | `rosgraph_msgs/msg/Clock` | 输出 | 三车型 | Gazebo 仿真时钟 |
+| `/sensors/gps/fix` | `sensor_msgs/msg/NavSatFix` | 输出 | 麦克纳姆 | 已验证发布的仿真 GPS 测量 |
+| `/drive/set_control_mode` | `agv_interfaces/srv/SetControlMode` | 服务 | 差动舵轮 | 设置 STOP/TWIST/MODULE/MOTOR |
+| `/drive/module_command_direct` | `agv_interfaces/msg/ModuleCommandArray` | 输入 | 差动舵轮 | MODULE 模式直接总成命令 |
+| `/drive/motor_command_direct` | `agv_interfaces/msg/MotorCommandArray` | 输入 | 差动舵轮 | MOTOR 模式 8 轮速度命令 |
+| `/joint_states` | `sensor_msgs/msg/JointState` | 输出 | 差动舵轮 | 4 个转向关节和 8 个轮关节状态 |
+| `/wheel_velocity_controller/commands` | `std_msgs/msg/Float64MultiArray` | 内部 | 差动舵轮 | 8 轮控制器目标速度 |
 
 完整控制链接口见 [docs/interfaces.md](docs/interfaces.md)，独立节点调试方法见 [docs/debugging.md](docs/debugging.md)。
 
 ## 查看运行状态
 
-控制器状态：
+默认差动舵轮控制器状态：
 
 ```bash
 ros2 control list_controllers
 ros2 control list_hardware_components
 ```
 
-车辆关节反馈：
+默认差动舵轮关节反馈：
 
 ```bash
 ros2 topic echo /joint_states --once
@@ -388,11 +424,11 @@ source install/setup.bash
 ros2 launch agv_bringup navigation.launch.py
 ```
 
-Nav2 配置允许 `vx`、`vy` 和 `wz`，可利用底盘的全向能力。当前仓库附带地图仅用于配置联调；建议先完成实际 SLAM 建图，再进行导航验收。
+当前 Nav2 配置允许 `vx`、`vy` 和 `wz`，适用于差动舵轮和麦克纳姆的全向能力。阿克曼使用前向速度和曲率转向，正式导航前需要针对非完整约束重新校准规划器参数。当前仓库附带地图仅用于配置联调；建议先完成实际 SLAM 建图，再进行导航验收。
 
 ## 可选定位融合
 
-预留接口：
+融合配置预留接口如下，其中麦克纳姆仿真已经发布 GPS 测量，其他传感器及完整融合仍需按应用接入和验收：
 
 - IMU：`/sensors/imu/data`，`sensor_msgs/msg/Imu`
 - GPS：`/sensors/gps/fix`，`sensor_msgs/msg/NavSatFix`
@@ -443,16 +479,45 @@ docker compose -f docker/docker-compose.yml run --rm agv-sim
 
 Gazebo GUI 需要正确传递 `DISPLAY`、X11/Wayland 套接字和 GPU 设备。桌面 Ubuntu 环境优先推荐原生安装方式。
 
+## 关闭仿真和键盘后台
+
+先在键盘控制窗口按 `k` 停车，再按 `Ctrl+C` 退出键盘节点；随后在启动仿真的终端按 `Ctrl+C`。正常退出会停止 Gazebo、车辆节点和 ros_gz_bridge。
+
+如果终端窗口已经关闭，可先用只读命令检查残留进程：
+
+```bash
+ps -eo pid,stat,etime,cmd | \
+  grep -E 'ros2 launch agv_bringup|gz sim|teleop_twist_keyboard|ackermann_keyboard|parameter_bridge'
+```
+
+确认具体 PID 和命令属于本项目后再终止，避免按模糊名称误杀其他 ROS 2 任务。
+
 ## 常见问题
 
 ### 启动后车辆不响应 `/cmd_vel`
 
-系统默认处于 STOP 模式。确认已经切换到 TWIST：
+如果使用 `differential_swerve`，确认已经从默认 STOP 模式切换到 TWIST：
 
 ```bash
 ros2 service call /drive/set_control_mode \
   agv_interfaces/srv/SetControlMode "{mode: 1}"
 ```
+
+如果使用 `mecanum` 或 `ackermann`，它们不提供该模式服务。请检查 `/cmd_vel` 是否恰好有一个发布者和一个订阅者：
+
+```bash
+ros2 topic info /cmd_vel
+```
+
+### 阿克曼按转向键后停止
+
+不要为阿克曼使用通用 `teleop_twist_keyboard`。通用节点的 `j/l` 会发送零线速度，阿克曼无法原地旋转。请运行：
+
+```bash
+./scripts/ackermann_teleop.sh
+```
+
+该节点让 `i` 保持前进，`j/l` 只调整转向，并在停止转向输入后自动回正。
 
 ### 找不到项目软件包
 
@@ -463,13 +528,13 @@ source /opt/ros/jazzy/setup.bash
 source install/setup.bash
 ```
 
-### 控制器未激活
+### 默认差动舵轮控制器未激活
 
 ```bash
 ros2 control list_controllers
 ```
 
-正常情况下 `joint_state_broadcaster` 和 `wheel_velocity_controller` 都应为 `active`。
+使用 `differential_swerve` 时，`joint_state_broadcaster` 和 `wheel_velocity_controller` 都应为 `active`。麦克纳姆和阿克曼由 Gazebo 插件驱动，不加载这两个控制器。
 
 ### 出现 EGL 或 `/dev/dri` 警告
 
