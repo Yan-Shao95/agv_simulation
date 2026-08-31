@@ -2,11 +2,11 @@
 <robot xmlns:xacro="http://www.ros.org/wiki/xacro" name="differential_swerve_agv">
   <xacro:property name="wheel_radius" value="0.10"/><xacro:property name="wheel_width" value="0.05"/>
   <link name="base_footprint"/>
-  <link name="base_link"><visual><geometry><box size="1.2 0.8 0.35"/></geometry><material name="blue"><color rgba="0.1 0.3 0.8 1"/></material></visual><collision><geometry><box size="1.2 0.8 0.35"/></geometry></collision><inertial><mass value="120"/><origin xyz="0 0 0"/><inertia ixx="8" ixy="0" ixz="0" iyy="15" iyz="0" izz="20"/></inertial></link>
+  <link name="base_link"><visual><geometry><box size="1.2 0.8 0.35"/></geometry><material name="blue"><color rgba="0.1 0.3 0.8 1"/></material></visual><collision><origin xyz="0 0 0.05"/><geometry><box size="1.2 0.8 0.25"/></geometry></collision><inertial><mass value="1163.5"/><origin xyz="0 0 0"/><inertia ixx="73.94" ixy="0" ixz="0" iyy="151.52" iyz="0" izz="201.67"/></inertial></link>
   <joint name="base_footprint_joint" type="fixed"><parent link="base_footprint"/><child link="base_link"/><origin xyz="0 0 0.275"/></joint>
   <xacro:macro name="module" params="id x y">
     <link name="module_${id}_carrier"><visual><geometry><cylinder radius="0.11" length="0.08"/></geometry></visual><collision><geometry><cylinder radius="0.11" length="0.08"/></geometry></collision><inertial><mass value="5"/><inertia ixx="0.03" ixy="0" ixz="0" iyy="0.03" iyz="0" izz="0.04"/></inertial></link>
-    <joint name="module_${id}_steering_joint" type="continuous"><parent link="base_link"/><child link="module_${id}_carrier"/><origin xyz="${x} ${y} -0.175"/><axis xyz="0 0 1"/><dynamics damping="0.2" friction="0.05"/></joint>
+    <joint name="module_${id}_steering_joint" type="continuous"><parent link="base_link"/><child link="module_${id}_carrier"/><origin xyz="${x} ${y} -0.175"/><axis xyz="0 0 1"/><dynamics damping="1.0" friction="0.05"/></joint>
     <xacro:wheel id="${id}" side="left" offset="0.05" axis="1"/><xacro:wheel id="${id}" side="right" offset="-0.05" axis="-1"/>
   </xacro:macro>
   <xacro:macro name="wheel" params="id side offset axis">

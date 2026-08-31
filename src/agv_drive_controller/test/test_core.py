@@ -7,12 +7,17 @@ sys.path.insert(0, str(Path(__file__).parents[1]))
 
 from agv_drive_controller.kinematics import ChassisTwist, SwerveKinematics, stop_targets
 from agv_drive_controller.module_mixer import mix_module
-from agv_drive_controller.angle_control import alignment_ready, bounded_angle_velocity, coordinated_speeds, optimize_target, rate_limit, safe_drive_velocity
+from agv_drive_controller.angle_control import adaptive_steering_limit, alignment_ready, bounded_angle_velocity, coordinated_speeds, drive_scale, optimize_target, rate_limit, safe_drive_velocity, validate_lock_parameters
 
 
 class CoreTest(unittest.TestCase):
     def setUp(self):
         self.kin = SwerveKinematics(((0.45, 0.325), (0.45, -0.325), (-0.45, -0.325), (-0.45, 0.325)))
+
+    def test_heavy_vehicle_alignment_band_is_configured(self):
+        config = (Path(__file__).parents[1] / 'config' / 'controller.yaml').read_text()
+        self.assertIn('slowdown_error_deg: 4.0', config)
+        self.assertIn('stop_error_deg: 12.0', config)
 
     def test_straight_modes_keep_all_modules_at_zero(self):
         forward = self.kin.inverse(ChassisTwist(0.5, 0.0, 0.0))
@@ -87,6 +92,59 @@ class CoreTest(unittest.TestCase):
     def test_rate_limit_prevents_speed_step(self):
         self.assertAlmostEqual(rate_limit(0.5, 0.0, 0.015), 0.015)
         self.assertAlmostEqual(rate_limit(-0.5, 0.0, 0.015), -0.015)
+
+    def test_drive_scale_is_full_below_slowdown_error(self):
+        self.assertEqual(
+            drive_scale(math.radians(1), math.radians(2), math.radians(6)),
+            1.0)
+
+    def test_drive_scale_interpolates_between_thresholds(self):
+        self.assertAlmostEqual(
+            drive_scale(math.radians(4), math.radians(2), math.radians(6)),
+            0.5)
+
+    def test_drive_scale_is_zero_at_stop_error(self):
+        self.assertEqual(
+            drive_scale(math.radians(6), math.radians(2), math.radians(6)),
+            0.0)
+
+    def test_coordinated_speeds_apply_one_scale_to_all_modules(self):
+        self.assertEqual(
+            coordinated_speeds(
+                [0.3, -0.3, 0.3, -0.3],
+                [0.3, -0.3, 0.3, -0.3],
+                0.5, 1.0, 1.0),
+            [0.15, -0.15, 0.15, -0.15])
+
+    def test_adaptive_limit_is_gentle_for_small_error(self):
+        self.assertEqual(
+            adaptive_steering_limit(
+                math.radians(1), 0.6, 3.0,
+                math.radians(2), math.radians(6)),
+            0.6)
+
+    def test_adaptive_limit_interpolates(self):
+        self.assertAlmostEqual(
+            adaptive_steering_limit(
+                math.radians(4), 0.6, 3.0,
+                math.radians(2), math.radians(6)),
+            1.8)
+
+    def test_adaptive_limit_reaches_full_authority(self):
+        self.assertEqual(
+            adaptive_steering_limit(
+                math.radians(6), 0.6, 3.0,
+                math.radians(2), math.radians(6)),
+            3.0)
+
+    def test_adaptive_limit_rejects_reversed_limits(self):
+        with self.assertRaises(ValueError):
+            adaptive_steering_limit(0.1, 3.0, 0.6, 0.1, 0.2)
+
+    def test_lock_parameters_require_ordered_thresholds(self):
+        with self.assertRaises(ValueError):
+            validate_lock_parameters(
+                4.0, 0.6, 3.0, math.radians(6), math.radians(2))
 
     def test_drive_waits_until_module_is_aligned(self):
         speed = safe_drive_velocity(

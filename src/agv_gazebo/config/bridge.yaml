@@ -8,3 +8,18 @@
   ros_type_name: sensor_msgs/msg/LaserScan
   gz_type_name: gz.msgs.LaserScan
   direction: GZ_TO_ROS
+- ros_topic_name: /cmd_vel
+  gz_topic_name: /model/agv/cmd_vel
+  ros_type_name: geometry_msgs/msg/Twist
+  gz_type_name: gz.msgs.Twist
+  direction: ROS_TO_GZ
+- ros_topic_name: /odometry/wheel
+  gz_topic_name: /model/agv/odometry
+  ros_type_name: nav_msgs/msg/Odometry
+  gz_type_name: gz.msgs.Odometry
+  direction: GZ_TO_ROS
+- ros_topic_name: /sensors/gps/fix
+  gz_topic_name: /sensors/gps/fix
+  ros_type_name: sensor_msgs/msg/NavSatFix
+  gz_type_name: gz.msgs.NavSat
+  direction: GZ_TO_ROS
