@@ -11,7 +11,7 @@ from agv_drive_controller.kinematics import ChassisTwist
 
 class DirectMotorControllerTest(unittest.TestCase):
     def setUp(self):
-        self.control = PreparedMotorControl()
+        self.control = PreparedMotorControl(acceleration=100.0)
 
     def test_straight_outputs_eight_independent_motor_commands(self):
         motors, ready = self.control.calculate(ChassisTwist(0.3, 0.0, 0.0), [0.0] * 4)
@@ -39,7 +39,7 @@ class DirectMotorControllerTest(unittest.TestCase):
         self.assertTrue(ready)
         self.assertEqual(len(motors), 8)
         self.assertTrue(all(abs(value) > 0.0 for value in motors))
-        self.assertTrue(all(math.isclose(motors[index], -motors[index + 1])
+        self.assertTrue(all(math.isclose(motors[index] + motors[index + 1], -0.5)
                             for index in range(0, 8, 2)))
         self.assertEqual(len(targets), 4)
         self.assertTrue(all(abs(angle) <= math.pi / 2 for angle in angles))
@@ -50,6 +50,42 @@ class DirectMotorControllerTest(unittest.TestCase):
             self.assertAlmostEqual(
                 target.drive_velocity * math.sin(target.steering_angle),
                 twist.wz * x)
+
+    def test_keeps_correcting_steering_while_driving(self):
+        motors, ready = self.control.calculate(
+            ChassisTwist(0.3, 0.0, 0.0), [math.radians(1)] * 4)
+        self.assertTrue(ready)
+        self.assertGreater(motors[0] + motors[1], 0.0)
+
+    def test_alignment_hysteresis_avoids_drive_chatter(self):
+        twist = ChassisTwist(0.3, 0.0, 0.0)
+        self.control.calculate(twist, [0.0] * 4)
+        motors, ready = self.control.calculate(twist, [math.radians(3)] * 4)
+        self.assertTrue(ready)
+        self.assertGreater(motors[0] - motors[1], 0.0)
+        _, ready = self.control.calculate(twist, [math.radians(15)] * 4)
+        self.assertFalse(ready)
+
+    def test_stalled_alignment_gets_bounded_assistance(self):
+        control = PreparedMotorControl()
+        twist = ChassisTwist(0.2, 0.0, 0.0)
+        angles = [math.radians(5.0)] * 4
+        initial, ready = control.calculate(twist, angles, dt=0.1)
+        self.assertFalse(ready)
+        for _ in range(100):
+            later, _ = control.calculate(twist, angles, dt=0.1)
+        self.assertGreater(abs(later[0]), abs(initial[0]))
+        self.assertTrue(all(abs(value) <= 0.6 for value in control.alignment_integral))
+        control.calculate(twist, [0.0] * 4)
+        self.assertEqual(control.alignment_integral, [0.0] * 4)
+
+    def test_acceleration_uses_simulation_period(self):
+        control = PreparedMotorControl()
+        twist = ChassisTwist(0.3, 0.0, 0.0)
+        motors, _ = control.calculate(twist, [0.0] * 4, dt=0.1)
+        self.assertAlmostEqual((motors[0] - motors[1]) * 0.05, 0.015)
+        unchanged, _ = control.calculate(twist, [0.0] * 4, dt=0.0)
+        self.assertEqual(motors, unchanged)
 
     def test_zero_command_stops_without_repositioning(self):
         motors, ready = self.control.calculate(
