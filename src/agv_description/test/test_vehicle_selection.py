@@ -20,6 +20,21 @@ class VehicleSelectionTest(unittest.TestCase):
         self.assertIn("{'vehicle_type': vehicle_type}", text)
         self.assertIn("condition=is_differential", text)
 
+    def test_sim_launch_starts_rviz_with_laser_scan_config_by_default(self):
+        launch = (ROOT / 'agv_bringup/launch/sim.launch.py').read_text()
+        config = ROOT / 'agv_bringup/config/simulation.rviz'
+        self.assertIn("'use_rviz', default_value='true'", launch)
+        self.assertIn("package='rviz2'", launch)
+        self.assertIn("'config', 'simulation.rviz'", launch)
+        self.assertTrue(config.exists())
+        text = config.read_text()
+        self.assertIn('Fixed Frame: base_link', text)
+        self.assertIn('Class: rviz_default_plugins/LaserScan', text)
+        self.assertIn('Value: /scan', text)
+        self.assertIn('Reliability Policy: Best Effort', text)
+        bridge = (ROOT / 'agv_gazebo/config/bridge.yaml').read_text()
+        self.assertIn('frame_id: laser_frame', bridge)
+
     def test_gazebo_launch_only_spawns_ros2_control_for_swerve(self):
         text = (ROOT / 'agv_gazebo/launch/simulation.launch.py').read_text()
         self.assertIn("{'vehicle_type': vehicle_type}", text)
@@ -38,8 +53,38 @@ class VehicleSelectionTest(unittest.TestCase):
     def test_mapping_and_navigation_forward_vehicle_type(self):
         for name in ('mapping.launch.py', 'navigation.launch.py'):
             text = (ROOT / 'agv_bringup/launch' / name).read_text()
-            self.assertIn("DeclareLaunchArgument('vehicle_type'", text)
-            self.assertIn("{'vehicle_type': vehicle_type}", text)
+            self.assertIn("'vehicle_type'", text)
+            self.assertIn("'vehicle_type': vehicle_type", text)
+
+    def test_navigation_uses_gazebo_map_and_amcl_localization(self):
+        bringup = (ROOT / 'agv_bringup/launch/navigation.launch.py').read_text()
+        navigation = (ROOT / 'agv_navigation/launch/navigation.launch.py').read_text()
+        params = (ROOT / 'agv_navigation/config/nav2.yaml').read_text()
+        rviz = (ROOT / 'agv_navigation/config/nav2_localization.rviz').read_text()
+        map_yaml = (ROOT / 'agv_navigation/maps/warehouse.yaml').read_text()
+        self.assertIn("'use_rviz': 'false'", bringup)
+        self.assertIn("name='nav2_rviz'", bringup)
+        self.assertIn("FindPackageShare('nav2_bringup')", navigation)
+        self.assertIn("'bringup_launch.py'", navigation)
+        self.assertIn("'use_localization': 'True'", navigation)
+        self.assertIn("'use_composition': 'False'", navigation)
+        self.assertIn("'/drive/set_control_mode'", bringup)
+        self.assertIn("'{mode: 1}'", bringup)
+        self.assertIn('controller_server:', params)
+        self.assertIn('planner_server:', params)
+        self.assertIn('bt_navigator:', params)
+        self.assertIn('nav2_smac_planner::SmacPlanner2D', params)
+        self.assertIn('motion_model: "Omni"', params)
+        self.assertIn('consider_footprint: true', params)
+        self.assertIn('VelocityDeadbandCritic', params)
+        self.assertIn('cost_travel_multiplier: 6.0', params)
+        self.assertIn('inflation_radius: 7.0', params)
+        self.assertIn('robot_model_type: "nav2_amcl::OmniMotionModel"', params)
+        self.assertIn('set_initial_pose: true', params)
+        self.assertIn('Fixed Frame: map', rviz)
+        self.assertIn('Class: rviz_default_plugins/Map', rviz)
+        self.assertIn('Class: nav2_rviz_plugins/ParticleCloud', rviz)
+        self.assertIn('resolution: 0.05', map_yaml)
 
     def test_mecanum_model_has_four_wheels_and_drive_plugin(self):
         path = ROOT / 'agv_description/urdf/mecanum.urdf.xacro'

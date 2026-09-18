@@ -11,6 +11,24 @@ from rclpy.node import Node
 
 
 MOTION_KEYS = {
+    # teleop_twist_keyboard 兼容键位。
+    'i': (1.0, 0.0, 0.0),
+    ',': (-1.0, 0.0, 0.0),
+    'j': (0.0, 0.0, 1.0),
+    'l': (0.0, 0.0, -1.0),
+    'u': (1.0, 0.0, 1.0),
+    'o': (1.0, 0.0, -1.0),
+    'm': (-1.0, 0.0, -1.0),
+    '.': (-1.0, 0.0, 1.0),
+    'I': (1.0, 0.0, 0.0),
+    '<': (-1.0, 0.0, 0.0),
+    'J': (0.0, 1.0, 0.0),
+    'L': (0.0, -1.0, 0.0),
+    'U': (1.0, 1.0, 0.0),
+    'O': (1.0, -1.0, 0.0),
+    'M': (-1.0, 1.0, 0.0),
+    '>': (-1.0, -1.0, 0.0),
+    # 工程原有的九宫格键位继续可用。
     'q': (1.0, 1.0, 0.0),
     'w': (1.0, 0.0, 0.0),
     'e': (1.0, -1.0, 0.0),
@@ -24,27 +42,32 @@ MOTION_KEYS = {
 }
 
 HELP = """
-AGV 键盘控制（请保持此终端处于焦点）
+AGV 状态保持式键盘控制（请保持此终端处于焦点）
 ---------------------------------------
-  q  w  e       左前 / 前进 / 右前
-  a  s  d       左移 / 减速停车 / 右移
-  z  x  c       左后 / 后退 / 右后
+  u  i  o       左前 / 前进 / 右前
+  j  k  l       左转 / 停车 / 右转
+  m  ,  .       左后 / 后退 / 右后
 
-  f / g         左转 / 右转
+  J / L         左移 / 右移（按住 Shift）
+  q w e / a d / z x c  九宫格平移键位也可用
+  f / g         左转 / 右转（备用键位）
   + / -         增加 / 减小线速度
   ] / [         增加 / 减小角速度
   空格          急速停车
   Ctrl-C        停车并退出
+
+运动指令会保持并以固定频率发布，按 k 或空格停车。
 """
 
 
 class KeyboardTeleop(Node):
     def __init__(self):
         super().__init__('keyboard_teleop')
-        self.declare_parameter('linear_speed', 0.3)
-        self.declare_parameter('angular_speed', 0.6)
-        self.declare_parameter('publish_rate', 10.0)
-        self.declare_parameter('key_timeout', 0.25)
+        self.declare_parameter('linear_speed', 0.5)
+        self.declare_parameter('angular_speed', 1.0)
+        self.declare_parameter('publish_rate', 20.0)
+        # 0 表示保持上一条运动指令，直到按下停车键。
+        self.declare_parameter('key_timeout', 0.0)
         self.declare_parameter('speed_step', 0.1)
         self.declare_parameter('brake_factor', 0.6)
         self.linear_speed = float(self.get_parameter('linear_speed').value)
@@ -70,7 +93,7 @@ class KeyboardTeleop(Node):
 
     def _read_key(self):
         ready, _, _ = select.select([sys.stdin], [], [], 0.0)
-        return sys.stdin.read(1).lower() if ready else None
+        return sys.stdin.read(1) if ready else None
 
     def _tick(self):
         key = self._read_key()
@@ -84,7 +107,7 @@ class KeyboardTeleop(Node):
             self.last_key_time = self.get_clock().now()
             if max(abs(value) for value in self.motion) < 0.05:
                 self.motion = (0.0, 0.0, 0.0)
-        elif key == ' ':
+        elif key in ('k', ' '):
             self.motion = (0.0, 0.0, 0.0)
         elif key in ('+', '='):
             self.linear_speed += self.speed_step
@@ -100,7 +123,8 @@ class KeyboardTeleop(Node):
             self._print_speed()
 
         age = (self.get_clock().now() - self.last_key_time).nanoseconds / 1e9
-        motion = self.motion if age <= self.key_timeout else (0.0, 0.0, 0.0)
+        timed_out = self.key_timeout > 0.0 and age > self.key_timeout
+        motion = (0.0, 0.0, 0.0) if timed_out else self.motion
         msg = Twist()
         msg.linear.x = motion[0] * self.linear_speed
         msg.linear.y = motion[1] * self.linear_speed

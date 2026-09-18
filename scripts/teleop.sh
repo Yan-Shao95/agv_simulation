@@ -7,5 +7,4 @@ else
   source install/setup.bash
 fi
 set -u
-ros2 run teleop_twist_keyboard teleop_twist_keyboard \
-  --ros-args -p repeat_rate:=10.0
+ros2 run agv_drive_controller keyboard_teleop

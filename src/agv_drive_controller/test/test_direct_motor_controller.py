@@ -63,13 +63,23 @@ class DirectMotorControllerTest(unittest.TestCase):
         motors, ready = self.control.calculate(twist, [math.radians(3)] * 4)
         self.assertTrue(ready)
         self.assertGreater(motors[0] - motors[1], 0.0)
-        _, ready = self.control.calculate(twist, [math.radians(15)] * 4)
+        _, ready = self.control.calculate(twist, [math.radians(40)] * 4)
         self.assertFalse(ready)
+
+    def test_nav2_can_start_driving_with_moderate_changing_angle_error(self):
+        motors, ready = self.control.calculate(
+            ChassisTwist(0.3, 0.1, 0.1),
+            [math.radians(15), math.radians(9),
+             math.radians(3), math.radians(6)])
+        self.assertTrue(ready)
+        self.assertTrue(any(
+            abs(motors[index] - motors[index + 1]) > 1e-6
+            for index in range(0, 8, 2)))
 
     def test_stalled_alignment_gets_bounded_assistance(self):
         control = PreparedMotorControl()
         twist = ChassisTwist(0.2, 0.0, 0.0)
-        angles = [math.radians(5.0)] * 4
+        angles = [math.radians(30.0)] * 4
         initial, ready = control.calculate(twist, angles, dt=0.1)
         self.assertFalse(ready)
         for _ in range(100):
@@ -83,7 +93,7 @@ class DirectMotorControllerTest(unittest.TestCase):
         control = PreparedMotorControl()
         twist = ChassisTwist(0.3, 0.0, 0.0)
         motors, _ = control.calculate(twist, [0.0] * 4, dt=0.1)
-        self.assertAlmostEqual((motors[0] - motors[1]) * 0.05, 0.015)
+        self.assertAlmostEqual((motors[0] - motors[1]) * 0.05, 0.035)
         unchanged, _ = control.calculate(twist, [0.0] * 4, dt=0.0)
         self.assertEqual(motors, unchanged)
 

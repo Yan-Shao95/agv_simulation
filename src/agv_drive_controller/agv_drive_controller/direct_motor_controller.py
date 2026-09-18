@@ -25,7 +25,9 @@ class PreparedMotorControl:
     def __init__(self, positions=POSITIONS, wheel_radius=0.1, half_track=0.05,
                  kp=4.0, max_steering_velocity=3.0,
                  steering_tolerance=math.radians(2.0), max_motor_velocity=30.0,
-                 acceleration=0.15, deceleration=0.5, steering_ki=1.0):
+                 acceleration=0.35, deceleration=0.8, steering_ki=1.0,
+                 drive_start_tolerance=math.radians(25.0),
+                 drive_stop_tolerance=math.radians(35.0)):
         self.kinematics = SwerveKinematics(positions)
         self.wheel_radius = wheel_radius
         self.half_track = half_track
@@ -36,6 +38,11 @@ class PreparedMotorControl:
         self.acceleration = acceleration
         self.deceleration = deceleration
         self.steering_ki = steering_ki
+        self.drive_start_tolerance = drive_start_tolerance
+        self.drive_stop_tolerance = drive_stop_tolerance
+        if not (0.0 <= self.steering_tolerance <= self.drive_start_tolerance
+                <= self.drive_stop_tolerance <= math.pi / 2):
+            raise ValueError('驱动对正容差必须依次增大且不超过90度')
         self.alignment_integral = [0.0] * 4
         self.previous_errors = [0.0] * 4
         self.speeds = [0.0] * 4
@@ -62,10 +69,15 @@ class PreparedMotorControl:
                      for index, target in enumerate(targets)]
         max_error = max(abs(normalize_angle(target_angle - angles[index]))
                         for index, (target_angle, _) in enumerate(optimized))
-        # 对正后持续纠偏；较宽的退出阈值避免在2度边界反复启停。
-        leave_tolerance = max(math.radians(12.0), self.steering_tolerance)
-        self.ready = max_error <= (leave_tolerance if self.ready else self.steering_tolerance)
-        scale = drive_scale(max_error, math.radians(4.0), leave_tolerance) if self.ready else 0.0
+        # Nav2 会连续改变 vx、vy、wz，不能等待四个总成同时进入很窄的
+        # 2 度误差带。进入/退出采用较宽的滞回区间，并按最大舵角误差
+        # 渐进增加牵引力；大角度换向时仍然只转向，不驱动。
+        tolerance = (self.drive_stop_tolerance if self.ready
+                     else self.drive_start_tolerance)
+        self.ready = max_error <= tolerance
+        scale = drive_scale(
+            max_error, self.steering_tolerance,
+            self.drive_stop_tolerance) if self.ready else 0.0
 
         motors = []
         for index, (target_angle, drive_velocity) in enumerate(optimized):
@@ -111,9 +123,13 @@ class DirectMotorController(Node):
             steering_tolerance=math.radians(
                 self.declare_parameter('steering_tolerance_deg', 2.0).value),
             max_motor_velocity=self.declare_parameter('max_motor_velocity', 30.0).value,
-            acceleration=self.declare_parameter('max_drive_acceleration', 0.15).value,
-            deceleration=self.declare_parameter('max_drive_deceleration', 0.5).value,
-            steering_ki=self.declare_parameter('steering_ki', 1.0).value)
+            acceleration=self.declare_parameter('max_drive_acceleration', 0.35).value,
+            deceleration=self.declare_parameter('max_drive_deceleration', 0.8).value,
+            steering_ki=self.declare_parameter('steering_ki', 1.0).value,
+            drive_start_tolerance=math.radians(
+                self.declare_parameter('drive_start_error_deg', 25.0).value),
+            drive_stop_tolerance=math.radians(
+                self.declare_parameter('drive_stop_error_deg', 35.0).value))
         self.last_update = self.get_clock().now()
         self.publisher = self.create_publisher(
             MotorCommandArray, 'drive/motor_velocity_target', 10)

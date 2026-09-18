@@ -8,7 +8,7 @@
 | `mecanum` | 四驱麦克纳姆轮小车 | 前后、左右横移、自转及组合运动 |
 | `ackermann` | 标准阿克曼小车 | 前后行驶和随车速转向 |
 
-默认差动舵轮车型由 4 个差动驱动总成构成，每个总成包含一个转向关节和两个反向安装的驱动轮，共计 4 个转向关节、8 个驱动轮。标准物理模型按约 1200 kg 整车质量配置，运行时由直接八电机控制器进行动作准备、持续舵角纠偏和驱动加速度限制。
+默认差动舵轮车型由 4 个差动驱动总成构成，每个总成包含一个转向关节和两个反向安装的驱动轮，共计 4 个转向关节、8 个驱动轮。标准物理模型的车体质量为 60 kg，计入四个总成、八个轮组和雷达后总质量约 96.5 kg；运行时由直接八电机控制器进行动作准备、持续舵角纠偏和驱动加速度限制。
 
 项目同时提供二维激光雷达、轮式里程计、40 m × 50 m 仓库世界、SLAM Toolbox、AMCL、Nav2，以及 EKF、IMU、GPS 和外部里程计接入配置。
 
@@ -19,16 +19,18 @@
 - ROS 2 Jazzy 全工作空间构建，8 个软件包全部成功。
 - 三种车型的 Xacro 展开、URDF 结构检查和 Gazebo 实体生成。
 - `vehicle_type` 在仿真、建图和导航启动入口中的透传。
-- 默认差动舵轮车型约 1200 kg 物理模型、4 个转向关节、8 个轮关节及完整 ros2_control 控制链。
+- 默认差动舵轮车型约 96.5 kg 整车物理模型、4 个转向关节、8 个轮关节及完整 ros2_control 控制链。
 - 麦克纳姆轮前后、左右横移和正反自转；四轮摩擦方向固定于车体坐标，不随轮子旋转。
 - 麦克纳姆仿真 GPS 已通过 `/sensors/gps/fix` 发布有效 `NavSatFix` 数据。
 - 阿克曼前后行驶、组合转向，以及纵向速度保持、转向松开自动回正的专用键盘控制。
 - ROS 与 Gazebo 的 `/clock`、`/scan`、`/cmd_vel`、`/odometry/wheel` 桥接。
 - 720 点、360°、0.10～20 m 的二维激光雷达。
 - 默认车型的 `/joint_states` 和 `/odometry/wheel` 反馈。
+- 仿真默认启动 RViz2，以点形式实时显示 `/scan` 二维激光数据和机器人模型。
+- Nav2 地图服务器和 AMCL 激光定位仿真，RViz2 可叠加显示 Gazebo 仓库地图、激光点与定位粒子。
 - 三车型受控速度指令和世界真实位姿动态验收。
 - 指令超时自动停车；`Ctrl+C` 可以终止仿真和控制进程。
-- 控制、运动学、车型选择、物理模型、麦克纳姆接触配置和阿克曼键盘自动测试，当前共 50 项且无失败。
+- 控制、运动学、车型选择、物理模型、麦克纳姆接触配置和阿克曼键盘自动测试，当前共 68 项且无失败。
 
 以下功能已经提供配置，但尚未完成完整端到端验收：
 
@@ -37,7 +39,7 @@
 - Nav2 多目标点自主导航。
 - GPS、IMU 和外部里程计的完整融合定位验收。
 
-仓库自带的 `warehouse.pgm` 是低分辨率示意地图。正式导航应通过 SLAM 生成约 0.05 m/像素的地图。
+仓库自带的 `warehouse.pgm` 由 Gazebo SDF 碰撞盒生成，分辨率为 0.05 m/像素，并与 40 m × 50 m 仓库世界保持一致。修改世界模型后应重新运行地图生成脚本；连接真实场地时可通过 SLAM 重新建图。
 
 ## 系统架构
 
@@ -64,11 +66,11 @@ ros2_control / Gazebo
 
 默认启动使用 `direct_motor_controller`，将整车速度转换为八轮速度。仓库中的 `swerve_kinematics`、`module_angle_controller` 和 `differential_module_mixer` 是独立调试节点，不由默认入口启动。
 
-标准底盘的轮面接触显式设置摩擦系数 1.3、接触刚度 500000、阻尼 10、最大修正速度 0.1 和最小接触深度 0.001。控制器在四组转角误差进入 2° 后允许行驶，行驶中继续纠偏；误差从 4° 到 12° 时逐步降低驱动速度，超过 12° 则退出对正状态并减速。驱动加减速度使用仿真时间计算。零指令与指令超时输出零轮速；不承诺停车后的主动舵角保持。
+标准底盘的轮面接触显式设置摩擦系数 1.3、接触刚度 500000、阻尼 10、最大修正速度 0.1 和最小接触深度 0.001。控制器在四组最大转角误差进入 25° 后开始渐进牵引，误差在 2° 时达到完整驱动输出；行驶中持续纠偏，并在误差超过 35° 时退出驱动状态。25°/35° 进入退出滞环可避免 Nav2 连续改变速度方向时反复停车。驱动加减速度使用仿真时间计算。零指令与指令超时输出零轮速；不承诺停车后的主动舵角保持。
 
 ### 标准差动舵轮稳定性修复
 
-标准底盘保留原有 1.2 m × 0.8 m 尺寸、约 1200 kg 质量和四总成布置。本次物理与控制修复没有迁移大型 AGV 的尺寸和质量参数，主要包括：
+标准底盘保留原有 1.2 m × 0.8 m 尺寸和四总成布置，车体质量为 60 kg，整车模型质量约 96.5 kg，不沿用大型 AGV 的吨级质量参数。主要物理与控制修复包括：
 
 - 统一轮子圆柱几何轴、碰撞轴、关节轴和惯量轴，并按轮子质量及尺寸计算惯量。
 - 显式配置轮地摩擦和接触刚度，减少总成对正过程中的滑动和接触抖动。
@@ -89,7 +91,7 @@ Gazebo 世界真实位姿已经验证前进、后退、横移、斜行和原地�
 | `agv_gazebo` | Gazebo 启动、车辆生成、控制器加载和 ros_gz_bridge |
 | `agv_worlds` | 40 m × 50 m 仓库世界 |
 | `agv_localization` | robot_localization、EKF 和 GPS 扩展配置 |
-| `agv_navigation` | SLAM Toolbox、AMCL、Nav2 和示意地图 |
+| `agv_navigation` | SLAM Toolbox、AMCL、Nav2 和 Gazebo 仓库匹配地图 |
 | `agv_bringup` | 仿真、建图和导航的统一启动入口 |
 
 ## 环境要求
@@ -214,6 +216,15 @@ ros2 launch agv_bringup sim.launch.py vehicle_type:=ackermann
 5. 仅在 `differential_swerve` 下启动完整差动舵轮控制链。
 6. 仅在 `differential_swerve` 下加载 `joint_state_broadcaster` 和 `wheel_velocity_controller`。
 7. 在麦克纳姆模型中加载 GPS 传感器和固定于车体的轮地摩擦方向。
+8. 默认启动 RViz2，并以 `base_link` 为固定坐标显示机器人模型和 `/scan` 实时激光点。
+
+不需要 RViz2 时可以关闭：
+
+```bash
+ros2 launch agv_bringup sim.launch.py use_rviz:=false
+```
+
+也可以通过 `rviz_config:=/path/to/config.rviz` 使用自定义配置。
 
 默认差动舵轮车型看到两个控制器均为 `active` 后即可控制：
 
@@ -244,7 +255,7 @@ ros2 service call /drive/set_control_mode \
 
 返回 `success=True` 表示切换成功。
 
-### 默认差动舵轮与麦克纳姆：通用键盘控制
+### 默认差动舵轮与麦克纳姆：状态保持式键盘控制
 
 在项目根目录运行：
 
@@ -252,7 +263,7 @@ ros2 service call /drive/set_control_mode \
 ./scripts/teleop.sh
 ```
 
-保持该终端获得键盘焦点。`differential_swerve` 启动键盘前必须完成上述 TWIST 模式切换；`mecanum` 由 Gazebo 插件直接接收 `/cmd_vel`，无需调用模式服务。键位如下：
+保持该终端获得键盘焦点。节点会以 20 Hz 持续发送最近一次运动指令，以满足底盘的指令超时保护；按一次运动键后，车辆会持续运动，按 `k` 或空格停车。`differential_swerve` 启动键盘前必须完成上述 TWIST 模式切换；`mecanum` 由 Gazebo 插件直接接收 `/cmd_vel`，无需调用模式服务。键位如下：
 
 - `i` / `,`：前进 / 后退
 - 小写 `j` / `l`：逆时针 / 顺时针自转
@@ -397,6 +408,8 @@ ros2 topic echo /scan --once
 ros2 topic hz /scan
 ```
 
+默认 RViz2 配置已经启用 `LaserScan` 显示项，将 `/scan` 的 720 个二维测距样本实时渲染为点。Gazebo 桥接会将扫描坐标统一设为三种车型共有的 `laser_frame`；RViz 固定坐标使用 `base_link`，因此在没有 `map` 或 `odom` 全局坐标时也能立即观察车体周围的障碍物轮廓。
+
 列出节点、话题和服务：
 
 ```bash
@@ -423,9 +436,9 @@ ros2 run nav2_map_server map_saver_cli -f warehouse
 
 保存结果通常包含 `warehouse.yaml` 和 `warehouse.pgm`。正式使用前应检查地图分辨率、闭环一致性和障碍物边界。
 
-## 定位与导航
+## Nav2 定位仿真
 
-使用已有地图启动 AMCL 和 Nav2：
+启动 Gazebo、Nav2 地图服务器、AMCL、生命周期管理器和专用 RViz2：
 
 ```bash
 source /opt/ros/jazzy/setup.bash
@@ -433,7 +446,53 @@ source install/setup.bash
 ros2 launch agv_bringup navigation.launch.py
 ```
 
-当前 Nav2 配置允许 `vx`、`vy` 和 `wz`，适用于差动舵轮和麦克纳姆的全向能力。阿克曼使用前向速度和曲率转向，正式导航前需要针对非完整约束重新校准规划器参数。当前仓库附带地图仅用于配置联调；建议先完成实际 SLAM 建图，再进行导航验收。
+该入口默认使用 `differential_swerve` 车型，并完成以下工作：
+
+1. 从 `warehouse.yaml` 加载与 Gazebo `warehouse_40x50.sdf` 对应的 5 cm 分辨率地图。
+2. AMCL 使用 `/scan`、`odom → base_link` 和全向运动模型持续估计车辆位置。
+3. 初始位姿自动设为 Gazebo 车辆生成位置 `(x=0, y=-20, yaw=0)`。
+4. RViz 固定坐标为 `map`，显示地图、机器人、红色激光点、绿色 AMCL 粒子和 TF。
+
+车辆生成位置发生变化时，在 RViz 工具栏选择 **2D Pose Estimate**，在地图中点击并拖动朝向即可重新设置 AMCL 初始位姿。
+
+检查定位输出和完整坐标链：
+
+```bash
+ros2 topic echo /amcl_pose
+ros2 run tf2_ros tf2_echo map base_link
+```
+
+Navigation2 启动入口会自动把默认差动舵轮车型切换到 TWIST 模式，可以直接在 RViz 中使用 **Nav2 Goal** 下发目标。单独使用 `sim.launch.py` 时仍需手动切换模式：
+
+```bash
+ros2 service call /drive/set_control_mode \
+  agv_interfaces/srv/SetControlMode "{mode: 1}"
+./scripts/teleop.sh
+```
+
+标准底盘导航针对全向能力进行了以下配置：
+
+- 全局规划使用 Smac 2D，在二维栅格中同时搜索纵向和横向移动；全局代价地图使用 `7.0 m` 膨胀半径覆盖最宽的横向通道，并提高障碍代价权重，使路径优先位于通道中部。局部代价地图保留 `1.5 m` 膨胀半径，以维持近场避障灵活性。
+- MPPI 使用 Omni 运动模型，根据局部路线输出 `vx`、`vy` 和 `wz`；直行、横移和原地旋转由四个差动舵轮统一分解执行。
+- 局部和全局代价地图使用包含安全余量的 `1.30 m × 0.90 m` 矩形足迹，MPPI 按完整足迹检查碰撞。
+- 舵轮角度变化时采用渐进牵引和滞回控制，避免连续更新路线时一直等待四个轮组同时精确对正。
+- 仿真导航速度上限为 `0.8 m/s`，底盘加速度上限为 `0.35 m/s²`；碰撞监视器仍拥有最终停车权限。
+- 标准底盘本体质量为 `60 kg`，四个模块和八个轮组另计；惯量按 `1.2 m × 0.8 m × 0.35 m` 箱体计算，不沿用大车吨级质量。
+
+不需要打开 Nav2 RViz 时：
+
+```bash
+ros2 launch agv_bringup navigation.launch.py use_nav2_rviz:=false
+```
+
+仓库 SDF 中的墙体或货架发生变化后，重新生成匹配地图并重新编译：
+
+```bash
+python3 scripts/generate_warehouse_map.py
+./scripts/build.sh
+```
+
+生成器读取 Gazebo SDF 中的碰撞盒，输出 800 × 1000 的 `warehouse.pgm`；地图范围为 40 m × 50 m，原点为 `(-20, -25)`。
 
 ## 可选定位融合
 

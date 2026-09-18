@@ -8,12 +8,12 @@ XACRO = Path(__file__).parents[1] / 'urdf' / 'agv.urdf.xacro'
 
 
 class ModelParametersTest(unittest.TestCase):
-    def test_heavy_body_and_passive_steering_parameters(self):
+    def test_standard_body_and_passive_steering_parameters(self):
         text = XACRO.read_text()
-        self.assertIn('<mass value="1163.5"/>', text)
-        self.assertIn('ixx="73.94"', text)
-        self.assertIn('iyy="151.52"', text)
-        self.assertIn('izz="201.67"', text)
+        self.assertIn('<mass value="60.0"/>', text)
+        self.assertIn('ixx="3.8125"', text)
+        self.assertIn('iyy="7.8125"', text)
+        self.assertIn('izz="10.4"', text)
         self.assertIn('damping="1.0" friction="0.05"', text)
         self.assertEqual(
             len(re.findall(r'<xacro:module id="[1-4]"', text)),
